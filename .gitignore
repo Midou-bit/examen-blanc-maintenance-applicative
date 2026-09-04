@@ -1,0 +1,29 @@
+# --- Dépendances ---
+node_modules/
+
+# --- Secrets : NE JAMAIS versionner (voir docs/E28-securite.md) ---
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# --- Journaux (voir docs/E25-journalisation.md) ---
+logs/
+*.log
+npm-debug.log*
+
+# --- Certificats TLS générés localement (voir docs/E23-dns-tls.md) ---
+certs/
+*.pem
+*.key
+*.crt
+
+# --- Build ---
+frontend/build/
+backend/docs-generated/
+
+# --- Divers ---
+.DS_Store
+coverage/
+.vscode/
+.idea/
