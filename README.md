@@ -1,5 +1,32 @@
+# Application de gestion de tâches — version corrigée et sécurisée
 
-# Projet d'Entraînement : Application de Gestion de Tâches
+> ### 👉 Pour lancer le projet et consulter le rendu : **[RENDU.md](RENDU.md)**
+>
+> Ce document contient l'installation pas à pas, l'état des neuf compétences
+> E21 → E29, les preuves d'exécution, et ce qui reste à faire.
+>
+> | Document | Contenu |
+> |---|---|
+> | **[RENDU.md](RENDU.md)** | **Lancement, état du projet, preuves** |
+> | [CHANGELOG.md](CHANGELOG.md) | Journal détaillé de chaque correction |
+> | [docs/00-COMMENCER-ICI.md](docs/00-COMMENCER-ICI.md) | Parcours de lecture pédagogique |
+> | [docs/01-glossaire.md](docs/01-glossaire.md) | Tous les termes techniques expliqués |
+> | [docs/E28-securite.md](docs/E28-securite.md) | Les 10 failles, en détail |
+> | [docs/90-preuves/](docs/90-preuves/) | Preuves d'exécution et captures d'écran |
+>
+> **Démarrage le plus rapide** (Docker requis) :
+> ```bash
+> cp .env.example .env && chmod +x scripts/*.sh
+> sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|" .env
+> ./scripts/generer-certificats.sh
+> echo '127.0.0.1 app.exam.local api.exam.local' | sudo tee -a /etc/hosts
+> docker compose up -d --build
+> ```
+> Puis <https://app.exam.local>
+
+---
+
+## Énoncé d'origine (conservé pour référence)
 
 Bienvenue sur le projet d'entraînement pour l'évaluation "Mise en production et maintenance applicative". Cette application est une simple "To-Do List" composée d'un frontend en React et d'un backend en Node.js/Express.
 

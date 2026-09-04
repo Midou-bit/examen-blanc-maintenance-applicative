@@ -7,54 +7,252 @@
 
 ## 1. Lancer le projet
 
-### Option A — la pile complète en HTTPS (recommandée pour la démonstration)
+> **Cette section est autonome.** Toutes les commandes sont données en entier,
+> dans l'ordre, sans rien supposer d'installé au départ.
+
+### 1.0 — Prérequis
+
+Vérifiez ce qui est déjà présent :
 
 ```bash
-cd exam_practice_app_clean
-
-cp .env.example .env                      # puis remplir (ou garder le .env fourni)
-./scripts/generer-certificats.sh          # autorité locale + certificat HTTPS
-
-echo '127.0.0.1 app.exam.local api.exam.local grafana.exam.local' | sudo tee -a /etc/hosts
-
-docker compose up -d --build
+node -v            # attendu : v20 ou plus
+npm -v
+docker -v
+docker compose version
+mongod --version   # seulement pour l'option B (sans Docker)
 ```
 
-| Adresse | Contenu |
+**Si Docker manque** (Ubuntu / Debian / WSL) :
+
+```bash
+sudo apt-get update
+sudo apt-get install -y docker.io docker-compose-v2
+sudo systemctl enable --now docker
+```
+
+**Si `docker` refuse de fonctionner sans `sudo`** (erreur `permission denied
+... /var/run/docker.sock`) :
+
+```bash
+sudo groupadd -f docker          # crée le groupe s'il n'existe pas
+sudo usermod -aG docker $USER    # vous y ajoute
+# Docker installé via snap ? ajoutez aussi :
+sudo snap disable docker && sudo snap enable docker
+```
+
+Puis **fermez et rouvrez votre terminal** (sous WSL : `wsl --shutdown` depuis
+PowerShell, puis rouvrez). Vérifiez avec `docker ps` — un tableau, même vide,
+signifie que c'est bon.
+
+**Si Node.js manque** :
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs
+```
+
+---
+
+### Option A — la pile complète en HTTPS *(recommandée pour la démonstration)*
+
+Aucune installation de Node ni de MongoDB n'est nécessaire : Docker s'occupe de
+tout.
+
+```bash
+# 1. Se placer dans le projet
+cd exam_practice_app_clean
+
+# 2. Créer le fichier de configuration
+cp .env.example .env
+
+# 3. Générer les secrets et les inscrire dans le .env
+sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|"                    .env
+sed -i "s|^MONGO_ROOT_PASSWORD=.*|MONGO_ROOT_PASSWORD=$(openssl rand -hex 16)|"  .env
+sed -i "s|^MONGO_APP_PASSWORD=.*|MONGO_APP_PASSWORD=$(openssl rand -hex 16)|"    .env
+sed -i "s|^GRAFANA_ADMIN_PASSWORD=.*|GRAFANA_ADMIN_PASSWORD=$(openssl rand -hex 12)|" .env
+
+# 4. Générer les certificats HTTPS (autorité locale + certificat serveur)
+chmod +x scripts/*.sh
+./scripts/generer-certificats.sh
+
+# 5. Déclarer les noms de domaine locaux
+echo '127.0.0.1 app.exam.local api.exam.local grafana.exam.local' | sudo tee -a /etc/hosts
+
+# 6. Construire et démarrer les 4 services
+docker compose up -d --build
+
+# 7. Attendre ~20 s, puis vérifier
+docker compose ps
+```
+
+Les quatre services doivent afficher `healthy` (Traefik affiche simplement
+`Up`).
+
+**Tester en ligne de commande :**
+
+```bash
+curl --cacert certs/ca.crt https://api.exam.local/health
+# attendu : {"status":"ok","uptime":...}
+
+curl --cacert certs/ca.crt https://api.exam.local/ready
+# attendu : {"status":"ready","database":"connectée"}
+```
+
+| Adresse à ouvrir dans le navigateur | Contenu |
 |---|---|
 | <https://app.exam.local> | L'application |
 | <https://api.exam.local/api-docs> | Documentation OpenAPI interactive |
 | <https://api.exam.local/health> | Sonde de vivacité |
 | <https://api.exam.local/ready> | Sonde de disponibilité (vérifie la base) |
 
-> Le navigateur affichera un avertissement de certificat : c'est normal, notre
-> autorité est locale. Importer `certs/ca.crt` dans le navigateur le supprime.
+> **Avertissement de certificat dans le navigateur** : c'est normal et attendu.
+> Notre autorité de certification est locale, elle n'est pas connue des
+> navigateurs — contrairement à Let's Encrypt en production. Cliquez sur
+> « Paramètres avancés » → « Continuer ». Pour supprimer l'avertissement,
+> importez `certs/ca.crt` dans les autorités de confiance du navigateur.
 
-### Avec la supervision
+**Ajouter la supervision :**
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
 ```
 
-<https://grafana.exam.local> · <http://localhost:9090> (Prometheus) · <http://localhost:9093> (Alertmanager)
+| Adresse | Contenu | Identifiants |
+|---|---|---|
+| <https://grafana.exam.local> | Tableaux de bord et journaux | `admin` / la valeur de `GRAFANA_ADMIN_PASSWORD` dans `.env` |
+| <http://localhost:9090> | Prometheus (mesures brutes) | — |
+| <http://localhost:9093> | Alertmanager (alertes actives) | — |
 
-### Option B — en local, sans Docker
-
-```bash
-./scripts/demarrer-local.sh    # vérifie MongoDB, crée les .env, installe
-
-cd backend  && npm run dev     # API      → http://localhost:5000
-cd frontend && npm run dev     # Interface → http://localhost:3000
-```
-
-### Vérifier que tout va bien
+**Commandes utiles :**
 
 ```bash
-cd backend  && npm run lint && npm test && npm audit --omit=dev   # 30 tests, 0 vuln.
-cd frontend && npm run lint && npm test && npm audit --omit=dev   # 17 tests, 0 vuln.
+docker compose logs -f backend        # suivre les journaux de l'API
+docker compose logs --tail=50         # les 50 dernières lignes de tout
+docker compose restart backend        # redémarrer un service
+docker compose down                   # tout arrêter (les données sont conservées)
+docker compose down -v                # tout arrêter ET effacer la base
 ```
 
 ---
+
+### Option B — en local, sans Docker *(pour développer)*
+
+**Étape 1 — Installer et démarrer MongoDB.**
+
+Si MongoDB n'est pas installé (Ubuntu / Debian / WSL) :
+
+```bash
+sudo apt-get install -y gnupg curl
+curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc \
+  | sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
+echo "deb [signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" \
+  | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+sudo apt-get update && sudo apt-get install -y mongodb-org
+```
+
+Le démarrer — **deux méthodes selon votre système** :
+
+```bash
+# Méthode 1 — avec systemd (Linux classique)
+sudo systemctl start mongod
+sudo systemctl enable mongod          # démarrage automatique au prochain boot
+sudo systemctl status mongod          # vérifier
+
+# Méthode 2 — sans systemd (WSL, ou si la méthode 1 échoue)
+mkdir -p ~/mongo-data
+mongod --dbpath ~/mongo-data --fork --logpath ~/mongo-data/mongod.log
+```
+
+Vérifier que MongoDB répond :
+
+```bash
+mongosh --quiet --eval 'db.runCommand({ping:1}).ok'
+# attendu : 1
+```
+
+Pour l'arrêter plus tard :
+
+```bash
+sudo systemctl stop mongod            # méthode 1
+mongosh --eval 'db.getSiblingDB("admin").shutdownServer()'   # méthode 2
+```
+
+**Étape 2 — Préparer le projet.**
+
+```bash
+cd exam_practice_app_clean
+chmod +x scripts/*.sh
+./scripts/demarrer-local.sh
+```
+
+Ce script vérifie que MongoDB répond, crée les fichiers `.env` à partir des
+exemples, **génère un `JWT_SECRET` solide**, et installe les dépendances.
+
+À défaut, en manuel :
+
+```bash
+cp backend/.env.example  backend/.env
+cp frontend/.env.example frontend/.env
+sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|" backend/.env
+sed -i "s|^MONGO_URI=.*|MONGO_URI=mongodb://localhost:27017/exam_practice_db|" backend/.env
+
+cd backend  && npm ci && cd ..
+cd frontend && npm ci && cd ..
+```
+
+**Étape 3 — Démarrer, dans DEUX terminaux séparés.**
+
+```bash
+# Terminal 1 — l'API
+cd exam_practice_app_clean/backend
+npm run dev                    # → http://localhost:5000
+
+# Terminal 2 — l'interface
+cd exam_practice_app_clean/frontend
+npm run dev                    # → http://localhost:3000
+```
+
+| Adresse | Contenu |
+|---|---|
+| <http://localhost:3000> | L'application |
+| <http://localhost:5000/api-docs> | Documentation OpenAPI |
+| <http://localhost:5000/health> | Sonde de santé |
+
+---
+
+### Vérifier que tout fonctionne
+
+```bash
+cd backend
+npm run lint          # ESLint — attendu : aucune sortie
+npm test              # attendu : 30 tests, 3 suites, tous verts
+npm audit --omit=dev  # attendu : found 0 vulnerabilities
+npm run docs          # génère backend/docs-generated/index.html
+
+cd ../frontend
+npm run lint          # attendu : aucune sortie
+npm test              # attendu : 17 tests, 3 fichiers, tous verts
+npm audit --omit=dev  # attendu : found 0 vulnerabilities
+npm run build         # attendu : « built in ~1.6s »
+```
+
+> **Les tests du backend ont besoin de MongoDB.** Ils utilisent leur propre
+> base (`exam_practice_test`), vidée entre chaque test : vos données de
+> développement ne risquent rien.
+
+---
+
+### En cas de problème
+
+| Symptôme | Cause probable | Solution |
+|---|---|---|
+| `permission denied ... docker.sock` | Pas dans le groupe `docker` | Voir §1.0, puis rouvrir le terminal |
+| `port is already allocated` sur 80 ou 443 | Un autre serveur web tourne | `sudo lsof -i :80` puis l'arrêter |
+| `ECONNREFUSED 127.0.0.1:27017` | MongoDB n'est pas démarré | Voir Option B, étape 1 |
+| `JWT_SECRET doit faire au moins 32 caractères` | `.env` incomplet | `sed -i "s\|^JWT_SECRET=.*\|JWT_SECRET=$(openssl rand -hex 32)\|" backend/.env` |
+| `504 Gateway Timeout` sur `api.exam.local` | Backend pas encore prêt | Attendre 20 s, puis `docker compose logs backend` |
+| `Could not resolve host: app.exam.local` | `/etc/hosts` non modifié | Voir Option A, étape 5 |
+| Avertissement de certificat | Autorité locale, normal | Importer `certs/ca.crt`, ou continuer |
 
 ## 2. État du projet
 
