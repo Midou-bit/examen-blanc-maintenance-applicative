@@ -1,0 +1,39 @@
+===============================================================
+ PREUVE — Rejeu de l'attaque IDOR sur le code CORRIGÉ
+ Date : 2026-09-04T14:57:58+02:00
+===============================================================
+
+── Étape 1 : Alice crée son compte ────────────────────────────
+{"msg":"Compte créé avec succès.","user":{"id":"6a9ac05617d5daf8d52e78d8","username":"alice_test"}}
+[HTTP 201]
+
+── Étape 2 : Bob crée son compte ──────────────────────────────
+{"msg":"Compte créé avec succès.","user":{"id":"6a9ac05617d5daf8d52e78db","username":"bob_attaquant"}}
+[HTTP 201]
+
+── Étape 3 : Alice crée une tâche privée ──────────────────────
+{"user":"6a9ac05617d5daf8d52e78d8","title":"Rendez-vous médical confidentiel","description":"Donnée privée d Alice","isCompleted":false,"_id":"6a9ac05617d5daf8d52e78dd","createdAt":"2026-09-04T12:57:58.506Z","updatedAt":"2026-09-04T12:57:58.506Z"}
+
+Identifiant de la tâche d'Alice : 6a9ac05617d5daf8d52e78dd
+
+── Étape 4 : BOB ATTAQUE — il connaît l'identifiant ───────────
+
+  [a] Bob tente de LIRE la tâche d'Alice :
+      {"msg":"Tâche introuvable.","code":"TASK_NOT_FOUND"}
+            [HTTP 404]
+
+  [b] Bob tente de MODIFIER la tâche d'Alice :
+      {"msg":"Tâche introuvable.","code":"TASK_NOT_FOUND"}
+            [HTTP 404]
+
+  [c] Bob tente de SUPPRIMER la tâche d'Alice :
+      {"msg":"Tâche introuvable.","code":"TASK_NOT_FOUND"}
+            [HTTP 404]
+
+── Étape 5 : la tâche d'Alice est-elle intacte ? ──────────────
+{"_id":"6a9ac05617d5daf8d52e78dd","user":"6a9ac05617d5daf8d52e78d8","title":"Rendez-vous médical confidentiel","description":"Donnée privée d Alice","isCompleted":false,"createdAt":"2026-09-04T12:57:58.506Z","updatedAt":"2026-09-04T12:57:58.506Z"}
+[HTTP 200]
+
+RÉSULTAT : les trois tentatives de Bob renvoient 404. La tâche
+d'Alice est intacte. AVANT correction, les trois renvoyaient 200
+et la tâche était lue, modifiée puis supprimée par un tiers.

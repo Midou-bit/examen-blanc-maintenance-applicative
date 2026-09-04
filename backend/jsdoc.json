@@ -1,0 +1,27 @@
+{
+  "//": "Configuration JSDoc (consigne E29 : générer la documentation À PARTIR du code source).",
+  "source": {
+    "include": [
+      "types.js",
+      "app.js",
+      "server.js",
+      "config",
+      "middleware",
+      "models",
+      "routes",
+      "utils",
+      "validators"
+    ],
+    "includePattern": ".+\\.js$",
+    "excludePattern": "(node_modules|coverage|logs|tests)"
+  },
+  "opts": {
+    "destination": "./docs-generated",
+    "recurse": true,
+    "readme": "./README-API.md"
+  },
+  "templates": {
+    "cleverLinks": false,
+    "monospaceLinks": false
+  }
+}

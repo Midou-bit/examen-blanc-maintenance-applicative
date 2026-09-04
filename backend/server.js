@@ -1,28 +1,70 @@
-// Point d'entrée du serveur backend
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
+/**
+ * @file Point d'entrée : démarre le serveur HTTP et gère son arrêt propre.
+ * @module server
+ */
+
+const app = require('./app');
+const config = require('./config/env');
 const connectDB = require('./config/db');
+const { disconnectDB } = require('./config/db');
+const { logger } = require('./config/logger');
 
-// Connexion à la base de données
-connectDB();
+/**
+ * Démarre l'application : base de données d'abord, port ensuite.
+ *
+ * L'ordre compte. Accepter du trafic avant que la base soit prête revient à
+ * répondre par des erreurs 500 pendant les premières secondes de chaque
+ * déploiement — et à déclencher les alertes de supervision à chaque mise en
+ * production.
+ *
+ * @returns {Promise<void>}
+ */
+async function start() {
+  try {
+    await connectDB();
 
-const app = express();
+    const server = app.listen(config.port, () => {
+      logger.info('Serveur démarré', {
+        port: config.port,
+        env: config.nodeEnv,
+        docs: `http://localhost:${config.port}/api-docs`,
+      });
+    });
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+    /**
+     * Arrêt gracieux.
+     *
+     * Quand Docker ou Kubernetes arrête un conteneur, il envoie SIGTERM puis
+     * attend. Sans ce traitement, le processus est tué net : les requêtes en
+     * cours sont coupées au milieu, et l'utilisateur voit une erreur réseau
+     * à chaque déploiement. Ici, on cesse d'accepter de NOUVELLES connexions,
+     * on laisse finir celles en cours, puis on ferme la base.
+     *
+     * @param {string} signal - Signal reçu (SIGTERM, SIGINT).
+     * @returns {void}
+     */
+    const shutdown = (signal) => {
+      logger.info(`Signal ${signal} reçu — arrêt en cours`);
+      server.close(async () => {
+        await disconnectDB();
+        logger.info('Arrêt terminé proprement');
+        process.exit(0);
+      });
 
-// Routes
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/tasks', require('./routes/tasks'));
+      // Garde-fou : si une requête ne se termine jamais, on ne reste pas
+      // bloqué indéfiniment.
+      setTimeout(() => {
+        logger.error('Arrêt forcé après expiration du délai');
+        process.exit(1);
+      }, 10_000).unref();
+    };
 
-// Ce handler ne catch que les erreurs synchrones. Les erreurs dans les promesses ne sont pas gérées.
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).send('Something broke!');
-});
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+  } catch (err) {
+    logger.error('Démarrage impossible', { reason: err.message });
+    process.exit(1);
+  }
+}
 
-const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+start();

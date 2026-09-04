@@ -1,0 +1,40 @@
+===============================================================
+ PREUVES — Autres corrections de sécurité (E28)
+ Date : 2026-09-04T14:58:21+02:00
+===============================================================
+
+┌─ 1. COOKIE HttpOnly (faille S3) ─────────────────────────────┐
+En-têtes renvoyés à la connexion :
+   X-Request-Id: 4a932c17-dc3b-4312-8313-11f14e12f5f2
+   Set-Cookie: token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjp7ImlkIjoiNmE5YWMwNTYxN2Q1ZGFmOGQ1MmU3OGQ4In0sImlhdCI6MTc4ODUyNjcwMSwiZXhwIjoxNzg4NTMzOTAxfQ.Xtj2-wDIhE5_NHrlYBwGf-998oSNlDOgIHOIWk7Mul8; Max-Age=7200; Path=/; Expires=Fri, 04 Sep 2026 14:58:21 GMT; HttpOnly; SameSite=Strict
+   → HttpOnly présent : le JavaScript de la page ne peut PAS lire ce cookie.
+   → SameSite=Strict  : le cookie n'est pas envoyé depuis un autre site (anti-CSRF).
+   → Aucun jeton dans le corps de la réponse : rien à stocker côté client.
+
+┌─ 2. INJECTION NoSQL (faille S5) ─────────────────────────────┐
+Requête : {"username":{"$ne":null},"password":{"$ne":null}}
+Objectif de l'attaque : se connecter sans connaître aucun identifiant.
+   {"msg":"Les données envoyées sont invalides.","code":"VALIDATION_ERROR","errors":[{"field":"username","message":"\"username\" must be a string"},{"field":"password","message":"\"password\" must be a string"}]}
+      [HTTP 400]
+
+┌─ 3. POLITIQUE DE MOT DE PASSE (faille S6) ───────────────────┐
+Requête : mot de passe = "a"  (accepté par le code d origine)
+
+┌─ 4. IDENTIFIANT MALFORMÉ (bug : 500 au lieu de 400) ─────────┐
+   {"msg":"Les données envoyées sont invalides.","code":"VALIDATION_ERROR","errors":[{"field":"id","message":"L'identifiant de la tâche n'est pas valide."}]}
+      [HTTP 400]
+   → 400 (faute du client) et non 500 (panne serveur) : plus d'alerte injustifiée.
+
+┌─ 5. CORS RESTREINT (faille S4) ──────────────────────────────┐
+Requête depuis une origine non autorisée (https://site-malveillant.example) :
+   [HTTP 500]
+   Réponse pour l'origine autorisée (http://localhost:3000) :
+   Access-Control-Allow-Origin: http://localhost:3000
+   Access-Control-Allow-Credentials: true
+
+┌─ 6. EN-TÊTES DE SÉCURITÉ — Helmet (faille S8) ───────────────┐
+   Content-Security-Policy: default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action
+   Referrer-Policy: no-referrer
+   Strict-Transport-Security: max-age=31536000; includeSubDomains
+   X-Content-Type-Options: nosniff
+   X-Frame-Options: SAMEORIGIN
