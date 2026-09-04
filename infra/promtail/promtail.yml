@@ -1,0 +1,66 @@
+# Collecte des journaux et envoi vers Loki (consigne E25).
+# Promtail est l'agent : il lit les fichiers, les étiquette, les expédie.
+
+server:
+  http_listen_port: 9080
+  log_level: warn
+
+positions:
+  # Mémorise jusqu'où chaque fichier a été lu. Sans ce suivi, un redémarrage
+  # de Promtail réexpédierait tous les journaux depuis le début.
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # ─── Journaux applicatifs écrits par Winston ───────────────────────────────
+  - job_name: application
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: api-taches
+          type: application
+          __path__: /var/log/app/app-*.log
+
+    pipeline_stages:
+      # Winston écrit du JSON : on l'analyse pour rendre chaque champ
+      # interrogeable individuellement dans Grafana.
+      - json:
+          expressions:
+            level: level
+            message: message
+            requestId: requestId
+            status: status
+            path: path
+      # `level` devient une étiquette : on peut alors filtrer d'un clic sur
+      # les seules erreurs.
+      - labels:
+          level:
+
+  # ─── Journal d'AUDIT, séparé ───────────────────────────────────────────────
+  # Étiquette distincte : les enquêtes de sécurité ne doivent pas avoir à
+  # fouiller dans le bruit technique.
+  - job_name: audit
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: api-taches
+          type: audit
+          __path__: /var/log/app/audit-*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            message: message
+            userId: userId
+            ip: ip
+      - labels:
+          message:
+
+  # ─── Sortie standard de tous les conteneurs ────────────────────────────────
+  - job_name: conteneurs
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: docker
+          __path__: /var/lib/docker/containers/*/*-json.log

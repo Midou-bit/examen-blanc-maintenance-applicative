@@ -1,0 +1,226 @@
+{
+  "__commentaire": "Tableau de bord principal (E26). Choix de conception : une TUILE CHIFFREE pour chaque valeur qu'on veut lire d'un coup d'oeil (etat, p95, taux d'erreur, debit), et des SERIES TEMPORELLES separees pour les tendances. Jamais deux axes Y sur un meme graphique : latence et taux d'erreur n'ont ni la meme unite ni la meme echelle, les superposer donnerait une lecture trompeuse. Les couleurs vert/orange/rouge sont reservees aux seuils d'etat, jamais utilisees pour distinguer des series.",
+  "title": "Application Tâches — Vue d'ensemble",
+  "uid": "app-taches-principal",
+  "tags": ["examen", "e26", "supervision"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "type": "row",
+      "title": "État du service",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "API",
+      "description": "Prometheus parvient-il à joindre l'API ? Correspond à l'alerte ApiIndisponible.",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "up{job=\"api-taches\"}", "legendFormat": "API", "refId": "A" }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "HORS LIGNE", "index": 0 }, "1": { "text": "EN LIGNE", "index": 1 } } }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Latence p95",
+      "description": "95 % des requêtes sont servies plus vite que cette valeur. Seuil d'alerte : 500 ms.",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(taskapi_http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.3 },
+              { "color": "red", "value": 0.5 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Taux d'erreur 5xx",
+      "description": "Part des requêtes en erreur SERVEUR. Les 4xx (mauvais mot de passe, saisie invalide) sont volontairement exclues : ce n'est pas une panne. Seuil d'alerte : 5 %.",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(taskapi_http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(taskapi_http_requests_total[5m])), 0.0001)",
+          "legendFormat": "erreurs",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.01 },
+              { "color": "red", "value": 0.05 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Débit",
+      "description": "Requêtes par seconde. Une chute brutale peut signaler une panne en amont (proxy, DNS) même si l'API répond.",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(taskapi_http_requests_total[5m]))", "legendFormat": "req/s", "refId": "A" }
+      ],
+      "options": {
+        "colorMode": "none",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      },
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2 } }
+    },
+    {
+      "type": "row",
+      "title": "Performance",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Temps de réponse par centile",
+      "description": "Trois centiles sur le MÊME axe : ils partagent l'unité (secondes), la comparaison est donc honnête. La médiane (p50) décrit l'expérience courante, le p99 les cas les plus lents.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(taskapi_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p50 (médiane)", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum(rate(taskapi_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum(rate(taskapi_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p99", "refId": "C" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineWidth": 2, "fillOpacity": 5, "showPoints": "never" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "transparent", "value": null },
+              { "color": "red", "value": 0.5 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Requêtes par famille de code HTTP",
+      "description": "2xx succès, 4xx faute du client, 5xx faute du serveur. Distinguer 4xx et 5xx est essentiel : seules les 5xx sont des incidents.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 7 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(taskapi_http_requests_total{status=~\"2..\"}[5m]))", "legendFormat": "2xx — succès", "refId": "A" },
+        { "expr": "sum(rate(taskapi_http_requests_total{status=~\"4..\"}[5m]))", "legendFormat": "4xx — erreur client", "refId": "B" },
+        { "expr": "sum(rate(taskapi_http_requests_total{status=~\"5..\"}[5m]))", "legendFormat": "5xx — erreur serveur", "refId": "C" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2, "fillOpacity": 10, "showPoints": "never", "stacking": { "mode": "normal" } }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Ressources et journaux",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Mémoire utilisée par le processus Node",
+      "description": "Une progression continue et jamais redescendue trahit une fuite mémoire.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "taskapi_process_resident_memory_bytes", "legendFormat": "mémoire résidente", "refId": "A" },
+        { "expr": "taskapi_nodejs_heap_size_used_bytes", "legendFormat": "tas utilisé", "refId": "B" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "lineWidth": 2, "fillOpacity": 5, "showPoints": "never" }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi" }
+      }
+    },
+    {
+      "type": "logs",
+      "title": "Journaux d'erreur en direct",
+      "description": "Alimenté par Loki. Le chaînon manquant entre « une alerte s'est déclenchée » et « voici pourquoi ».",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        { "expr": "{job=\"api-taches\", type=\"application\"} | json | level=\"error\"", "refId": "A" }
+      ],
+      "options": {
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
+    }
+  ]
+}

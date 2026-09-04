@@ -27,3 +27,7 @@ backend/docs-generated/
 coverage/
 .vscode/
 .idea/
+
+# --- Sauvegardes de base de données ---
+sauvegardes/
+*.gz

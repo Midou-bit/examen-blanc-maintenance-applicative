@@ -1,0 +1,104 @@
+# =============================================================================
+# Règles d'alerte (consigne E26 : « configuration de sondes d'alertes »)
+# =============================================================================
+# Trois alertes, exactement celles suggérées par le sujet.
+#
+# CHAQUE SEUIL EST JUSTIFIÉ. Une alerte mal réglée est pire qu'aucune alerte :
+# si elle se déclenche trop souvent pour rien, l'équipe cesse de la lire — et
+# passera à côté du vrai incident. C'est ce qu'on appelle la « fatigue
+# d'alerte », première cause d'incidents non détectés.
+#
+# D'où le paramètre `for:` présent partout : il exige que la condition reste
+# vraie PENDANT une durée donnée. Un pic d'une seconde n'alerte personne.
+# =============================================================================
+
+groups:
+  - name: disponibilite
+    rules:
+      # ─────────────────────────────────────────────────────────────────────
+      - alert: ApiIndisponible
+        expr: up{job="api-taches"} == 0
+        for: 1m
+        labels:
+          severity: critique
+        annotations:
+          resume: "L'API ne répond plus"
+          description: >-
+            Prometheus n'obtient plus de réponse de {{ $labels.instance }}
+            depuis 1 minute. L'application est probablement inutilisable.
+          # Pourquoi 1 minute : un redéploiement provoque une coupure de
+          # quelques secondes. Alerter immédiatement déclencherait une alerte
+          # à chaque mise en production. Au-delà d'une minute, ce n'est plus
+          # un déploiement, c'est une panne.
+          action: >-
+            Vérifier « docker compose ps » puis
+            « docker compose logs backend --tail=100 ».
+
+  - name: performance
+    rules:
+      # ─────────────────────────────────────────────────────────────────────
+      - alert: LatenceElevee
+        expr: >-
+          histogram_quantile(0.95,
+            sum(rate(taskapi_http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: avertissement
+        annotations:
+          resume: "Temps de réponse dégradé (p95 > 500 ms)"
+          description: >-
+            95 % des requêtes mettent plus de 500 ms à aboutir, depuis
+            5 minutes. Valeur actuelle : {{ $value | humanizeDuration }}.
+          # Pourquoi le centile 95 et non la moyenne : une moyenne de 100 ms
+          # peut masquer 5 % d'utilisateurs à 3 secondes. Le p95 décrit ce que
+          # subissent les moins bien servis — c'est eux qui se plaignent.
+          #
+          # Pourquoi 500 ms : au-delà, l'utilisateur perçoit nettement
+          # l'attente et l'interface paraît lente.
+          action: >-
+            Regarder le tableau de bord Grafana : latence par route, puis
+            vérifier la charge de MongoDB.
+
+  - name: fiabilite
+    rules:
+      # ─────────────────────────────────────────────────────────────────────
+      - alert: TauxErreurEleve
+        expr: >-
+          (
+            sum(rate(taskapi_http_requests_total{status=~"5.."}[5m]))
+            /
+            sum(rate(taskapi_http_requests_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critique
+        annotations:
+          resume: "Plus de 5 % des requêtes échouent"
+          description: >-
+            Taux d'erreurs serveur (5xx) à {{ $value | humanizePercentage }}
+            depuis 5 minutes.
+          # On ne compte QUE les 5xx (fautes du serveur), jamais les 4xx.
+          # Un utilisateur qui se trompe de mot de passe génère un 401 : c'est
+          # le fonctionnement normal, pas un incident. Confondre les deux
+          # produit des alertes permanentes et inexploitables.
+          action: >-
+            Consulter les journaux dans Grafana/Loki, filtre level="error",
+            et repérer l'identifiant de corrélation des requêtes fautives.
+
+      # ─────────────────────────────────────────────────────────────────────
+      # Alerte de sécurité, au-delà de ce que demande le sujet : une rafale
+      # d'échecs de connexion trahit une attaque par force brute.
+      - alert: RafaleEchecsAuthentification
+        expr: rate(taskapi_auth_failures_total[5m]) > 0.5
+        for: 2m
+        labels:
+          severity: avertissement
+        annotations:
+          resume: "Nombre inhabituel d'échecs de connexion"
+          description: >-
+            Plus de 30 échecs d'authentification par minute. Possible
+            tentative d'attaque par force brute.
+          action: >-
+            Identifier les adresses IP dans le journal d'audit, et durcir
+            si besoin la limitation de débit.

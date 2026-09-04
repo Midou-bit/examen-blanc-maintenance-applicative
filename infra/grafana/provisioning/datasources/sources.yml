@@ -1,0 +1,26 @@
+# Sources de données Grafana, déclarées en fichier plutôt que cliquées à la
+# main dans l'interface.
+#
+# Pourquoi c'est important : une configuration cliquée vit uniquement dans la
+# base de Grafana. Elle disparaît si le volume est perdu, et personne ne sait
+# la reproduire. Ici, elle est versionnée avec le code : reconstruire
+# l'environnement de zéro redonne exactement la même chose. C'est le principe
+# de « l'infrastructure décrite par le code ».
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 15s   # doit correspondre au scrape_interval de Prometheus
+
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      maxLines: 1000

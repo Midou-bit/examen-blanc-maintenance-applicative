@@ -1,0 +1,174 @@
+# =============================================================================
+# Intégration continue (consigne E24)
+# =============================================================================
+# Se déclenche à chaque poussée et à chaque demande de fusion.
+#
+# LE PRINCIPE, EN UNE PHRASE : ce qui n'est pas vérifié automatiquement finit
+# toujours par casser. Chaque contrôle ci-dessous correspond à une erreur qui
+# s'est réellement produite pendant ce projet.
+# =============================================================================
+
+name: Intégration continue
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# Annule une exécution encore en cours si un nouveau commit arrive sur la même
+# branche : inutile de tester du code déjà remplacé.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  qualite-backend:
+    name: Backend — qualité et tests
+    runs-on: ubuntu-latest
+
+    # MongoDB en conteneur annexe, fourni par GitHub Actions. Les tests
+    # tournent donc contre une VRAIE base, pas une imitation : c'est ce qui
+    # permet de vérifier réellement le correctif de la faille IDOR.
+    services:
+      mongodb:
+        image: mongo:7
+        ports: ['27017:27017']
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1}).ok'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      # `npm ci` respecte strictement le fichier de verrouillage, et échoue
+      # s'il est désynchronisé de package.json — ce qui attrape les oublis
+      # de commit du package-lock.
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Vérifier le formatage (Prettier)
+        run: npm run format:check
+
+      - name: Analyser le code (ESLint)
+        run: npm run lint
+
+      - name: Lancer les tests
+        run: npm test
+        env:
+          MONGO_URI_TEST: mongodb://127.0.0.1:27017/exam_practice_test
+
+      # ┌─ POURQUOI --omit=dev ─────────────────────────────────────────────┐
+      # │ On bloque la chaîne sur les vulnérabilités des dépendances        │
+      # │ RÉELLEMENT DÉPLOYÉES. Les outils de développement (eslint,        │
+      # │ prettier…) ne tournent jamais en production : une faille chez eux │
+      # │ n'expose pas les utilisateurs, et bloquer dessus finirait par     │
+      # │ pousser l'équipe à désactiver le contrôle.                        │
+      # └───────────────────────────────────────────────────────────────────┘
+      - name: Audit de sécurité des dépendances
+        run: npm audit --omit=dev --audit-level=moderate
+
+      - name: Générer la documentation
+        run: npm run docs
+
+  # ───────────────────────────────────────────────────────────────────────────
+  qualite-frontend:
+    name: Frontend — qualité, tests et compilation
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Vérifier le formatage (Prettier)
+        run: npm run format:check
+
+      - name: Analyser le code (ESLint)
+        run: npm run lint
+
+      - name: Lancer les tests
+        run: npm test
+
+      - name: Audit de sécurité des dépendances
+        run: npm audit --omit=dev --audit-level=moderate
+
+      # La compilation est un test à part entière : elle échoue sur une
+      # importation cassée ou un fichier manquant, que les tests unitaires
+      # ne détecteraient pas forcément.
+      - name: Compiler l'application
+        run: npm run build
+
+  # ───────────────────────────────────────────────────────────────────────────
+  images-docker:
+    name: Construction des images Docker
+    runs-on: ubuntu-latest
+    # N'a de sens que si le code est sain : inutile de construire une image
+    # à partir d'un code qui ne passe pas les tests.
+    needs: [qualite-backend, qualite-frontend]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Construire l'image du backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: false          # en intégration, on vérifie seulement que ça construit
+          tags: exam-backend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Construire l'image du frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: false
+          tags: exam-frontend:ci
+          build-args: VITE_API_URL=https://api.exemple.fr/api
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Analyse du code à la recherche de motifs dangereux. Complémentaire de
+  # `npm audit`, qui ne regarde QUE les dépendances et jamais notre code.
+  analyse-securite:
+    name: Analyse statique de sécurité
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: javascript
+
+      - uses: github/codeql-action/analyze@v4

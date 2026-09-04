@@ -1,0 +1,14 @@
+# Chargement automatique des tableaux de bord depuis des fichiers JSON.
+apiVersion: 1
+
+providers:
+  - name: 'Tableaux de bord Examen'
+    orgId: 1
+    folder: 'Application Tâches'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

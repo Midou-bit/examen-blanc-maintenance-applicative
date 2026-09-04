@@ -1,0 +1,104 @@
+# =============================================================================
+# Pile de supervision et de journalisation centralisée (consignes E25 et E26)
+# =============================================================================
+# Lancement conjoint avec l'application :
+#   docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+#
+# Rôle de chaque brique :
+#   prometheus    interroge /metrics toutes les 15 s et conserve l'historique
+#   alertmanager  reçoit les alertes de Prometheus et les achemine
+#   grafana       affiche tableaux de bord et journaux
+#   loki          stocke les journaux (l'équivalent de Prometheus pour le texte)
+#   promtail      lit les fichiers de journaux et les envoie à Loki
+#
+# Prometheus mesure « combien » (latence, taux d'erreur), Loki conserve « quoi »
+# (le détail de chaque événement). Une alerte de Prometheus indique QU'IL y a un
+# problème ; Loki permet de comprendre LEQUEL. Les deux sont complémentaires.
+# =============================================================================
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    container_name: exam-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    volumes:
+      - ./infra/prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    networks:
+      - public
+    ports:
+      - "127.0.0.1:9090:9090"   # lié à 127.0.0.1 : accessible en local, pas depuis le réseau
+
+  alertmanager:
+    image: prom/alertmanager:v0.29.0
+    container_name: exam-alertmanager
+    restart: unless-stopped
+    volumes:
+      - ./infra/alertmanager:/etc/alertmanager:ro
+    networks:
+      - public
+    ports:
+      - "127.0.0.1:9093:9093"
+
+  loki:
+    image: grafana/loki:3.5.9
+    container_name: exam-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki.yml
+    volumes:
+      - ./infra/loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki-data:/loki
+    networks:
+      - public
+
+  promtail:
+    image: grafana/promtail:3.5.9
+    container_name: exam-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail.yml
+    volumes:
+      - ./infra/promtail/promtail.yml:/etc/promtail/promtail.yml:ro
+      # Les journaux applicatifs, écrits par le backend dans son volume.
+      - backend-logs:/var/log/app:ro
+      # Les journaux de TOUS les conteneurs, gérés par Docker.
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    depends_on:
+      - loki
+    networks:
+      - public
+
+  grafana:
+    image: grafana/grafana:12.4.1
+    container_name: exam-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      # Désactive la création de comptes par des visiteurs : sans cela,
+      # n'importe qui atteignant la page peut s'inscrire.
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: https://grafana.exam.local
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.exam.local`)"
+      - "traefik.http.routers.grafana.entrypoints=websecure"
+      - "traefik.http.routers.grafana.tls=true"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  loki-data:

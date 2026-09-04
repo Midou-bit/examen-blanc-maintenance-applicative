@@ -1,0 +1,165 @@
+# =============================================================================
+# Déploiement continu (consigne E24)
+# =============================================================================
+# Deux environnements, deux déclencheurs :
+#
+#   PRÉ-PRODUCTION : automatique à chaque poussée sur « develop ».
+#                    L'équipe voit ses changements en conditions réelles.
+#
+#   PRODUCTION     : uniquement sur une ÉTIQUETTE de version (v1.2.3), avec
+#                    validation humaine obligatoire. Un déploiement en
+#                    production ne doit jamais partir par accident.
+# =============================================================================
+
+name: Déploiement continu
+
+on:
+  push:
+    branches: [develop]
+    tags: ['v*.*.*']
+  workflow_dispatch:      # permet aussi un déclenchement manuel
+
+env:
+  REGISTRE: ghcr.io
+  IMAGE_BASE: ${{ github.repository }}
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  publier-images:
+    name: Construire et publier les images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      version: ${{ steps.version.outputs.valeur }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Déterminer la version
+        id: version
+        run: |
+          # Sur une étiquette, on prend le numéro de version (v1.2.3 -> 1.2.3).
+          # Sinon, l'empreinte courte du commit : chaque image est ainsi
+          # traçable jusqu'à la ligne de code exacte qui l'a produite.
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "valeur=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "valeur=develop-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Se connecter au registre
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRE }}
+          username: ${{ github.actor }}
+          # Jeton fourni automatiquement par GitHub : aucun secret à gérer
+          # ni à faire tourner à la main.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publier l'image du backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          # Deux étiquettes : la version figée (pour revenir en arrière) et
+          # « latest » (pour la commodité). Ne déployer QUE par version :
+          # « latest » ne dit pas ce qui tourne réellement.
+          tags: |
+            ${{ env.REGISTRE }}/${{ env.IMAGE_BASE }}-backend:${{ steps.version.outputs.valeur }}
+            ${{ env.REGISTRE }}/${{ env.IMAGE_BASE }}-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Publier l'image du frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          build-args: |
+            VITE_API_URL=${{ startsWith(github.ref, 'refs/tags/') && 'https://api.exemple.fr/api' || 'https://api.preprod.exemple.fr/api' }}
+          tags: |
+            ${{ env.REGISTRE }}/${{ env.IMAGE_BASE }}-frontend:${{ steps.version.outputs.valeur }}
+            ${{ env.REGISTRE }}/${{ env.IMAGE_BASE }}-frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Analyse de vulnérabilités de l'IMAGE elle-même : `npm audit` ne voit
+      # que les paquets npm, jamais les failles du système de base (Alpine,
+      # OpenSSL…). Les deux contrôles sont nécessaires.
+      - name: Scanner l'image du backend
+        uses: aquasecurity/trivy-action@0.34.0
+        with:
+          image-ref: ${{ env.REGISTRE }}/${{ env.IMAGE_BASE }}-backend:${{ steps.version.outputs.valeur }}
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'      # informatif pour l'instant ; passer à 1 pour bloquer
+          format: 'table'
+
+  # ───────────────────────────────────────────────────────────────────────────
+  deployer-preproduction:
+    name: Déployer en pré-production
+    runs-on: ubuntu-latest
+    needs: publier-images
+    if: github.ref == 'refs/heads/develop'
+    environment:
+      name: preproduction
+      url: https://app.preprod.exemple.fr
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Déployer par SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PREPROD_HOST }}
+          username: ${{ secrets.PREPROD_USER }}
+          # Authentification par CLÉ, jamais par mot de passe (consigne E22).
+          key: ${{ secrets.PREPROD_SSH_KEY }}
+          script: |
+            cd /opt/exam-app
+            ./scripts/deployer.sh preproduction ${{ needs.publier-images.outputs.version }}
+
+  # ───────────────────────────────────────────────────────────────────────────
+  deployer-production:
+    name: Déployer en production
+    runs-on: ubuntu-latest
+    needs: publier-images
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment:
+      # ┌─ LA PROTECTION LA PLUS IMPORTANTE DE TOUT LE PIPELINE ────────────┐
+      # │ Un « environment » GitHub configuré avec des relecteurs met le    │
+      # │ déploiement EN ATTENTE tant qu'un humain n'a pas validé. Toute    │
+      # │ l'automatisation précédente sert à préparer ce moment, pas à le   │
+      # │ supprimer.                                                         │
+      # └────────────────────────────────────────────────────────────────────┘
+      name: production
+      url: https://app.exemple.fr
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Déployer par SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            cd /opt/exam-app
+            ./scripts/deployer.sh production ${{ needs.publier-images.outputs.version }}
+
+      - name: Vérifier que le service répond
+        run: |
+          # Un déploiement « réussi » qui laisse le site hors ligne n'est pas
+          # un succès. On vérifie, et on échoue bruyamment sinon.
+          for i in {1..10}; do
+            if curl -fsS https://api.exemple.fr/health > /dev/null; then
+              echo "✓ Le service répond"; exit 0
+            fi
+            echo "Tentative $i/10…"; sleep 10
+          done
+          echo "✗ Le service ne répond pas après le déploiement"; exit 1

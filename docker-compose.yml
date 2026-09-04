@@ -1,0 +1,148 @@
+# =============================================================================
+# Orchestration de la pré-production (consigne E24)
+# =============================================================================
+# Quatre services :
+#   traefik   — reverse proxy : point d'entrée unique, termine le TLS (HTTPS)
+#   mongo     — base de données, JAMAIS exposée à l'extérieur
+#   backend   — l'API Node.js
+#   frontend  — les fichiers statiques servis par nginx
+#
+# Démarrage :
+#   cp .env.example .env   (puis remplir)
+#   ./scripts/generer-certificats.sh
+#   docker compose up -d --build
+# =============================================================================
+
+services:
+  # ───────────────────────────────────────────────────────────────────────────
+  traefik:
+    image: traefik:v3.6
+    container_name: exam-traefik
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      # `exposedbydefault=false` : un conteneur n'est publié QUE s'il porte
+      # explicitement l'étiquette « traefik.enable=true ». Sans cela, tout
+      # nouveau service se retrouverait exposé sur Internet par accident.
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      # Redirection systématique HTTP -> HTTPS. Un visiteur qui tape
+      # « exemple.fr » arrive en HTTP : sans cette règle, sa première requête
+      # (et son cookie de session) circulerait en clair.
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --accesslog=true
+      - --accesslog.filepath=/var/log/traefik/access.log
+      - --metrics.prometheus=true
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Lecture seule : Traefik n'a besoin que de LIRE la liste des
+      # conteneurs. Un montage en écriture donnerait à ce conteneur le
+      # contrôle total du démon Docker de l'hôte — un risque majeur.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./certs:/etc/traefik/certs:ro
+      - ./infra/traefik/dynamic:/etc/traefik/dynamic:ro
+      - traefik-logs:/var/log/traefik
+    networks:
+      - public
+
+  # ───────────────────────────────────────────────────────────────────────────
+  mongo:
+    image: mongo:7
+    container_name: exam-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DB_NAME}
+    volumes:
+      - mongo-data:/data/db
+      - ./infra/mongo/init-utilisateur.js:/docker-entrypoint-initdb.d/init-utilisateur.js:ro
+    # ┌─ AUCUN `ports:` — C'EST VOLONTAIRE ────────────────────────────────────┐
+    # │ La base n'est joignable que depuis le réseau interne « prive ».        │
+    # │ Publier 27017 sur l'hôte l'exposerait à tout le réseau local, et       │
+    # │ souvent à Internet. Les bases MongoDB laissées ouvertes sont une       │
+    # │ source récurrente de fuites de données massives.                       │
+    # └────────────────────────────────────────────────────────────────────────┘
+    networks:
+      - prive
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ───────────────────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: exam-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      MONGO_URI: mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongo:27017/${MONGO_DB_NAME}?authSource=admin
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-2h}
+      CORS_ORIGINS: ${FRONTEND_URL}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      mongo:
+        # `service_healthy` et non `service_started` : on attend que MongoDB
+        # réponde vraiment, pas seulement que son conteneur soit lancé.
+        condition: service_healthy
+    volumes:
+      - backend-logs:/app/logs
+    networks:
+      - public
+      - prive
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`${API_HOST}`)"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.tls=true"
+      - "traefik.http.services.api.loadbalancer.server.port=5000"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # L'URL de l'API est figée à la compilation (voir le Dockerfile).
+        VITE_API_URL: https://${API_HOST}/api
+    container_name: exam-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=Host(`${APP_HOST}`)"
+      - "traefik.http.routers.app.entrypoints=websecure"
+      - "traefik.http.routers.app.tls=true"
+      - "traefik.http.services.app.loadbalancer.server.port=80"
+
+# ─── Réseaux : le cœur du cloisonnement ──────────────────────────────────────
+# `public` relie ce qui doit être joignable depuis l'extérieur via Traefik.
+# `prive` est marqué « internal: true » : aucun accès à Internet, aucun accès
+# depuis l'hôte. Seul le backend appartient aux deux réseaux — il fait le pont,
+# et devient le SEUL chemin possible vers les données.
+networks:
+  public:
+    driver: bridge
+  prive:
+    driver: bridge
+    internal: true
+
+volumes:
+  mongo-data:
+  backend-logs:
+  traefik-logs:

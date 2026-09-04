@@ -1,0 +1,27 @@
+# Configuration TLS dite « dynamique » de Traefik.
+# Elle est relue à chaud : modifier ce fichier ne nécessite pas de redémarrer
+# le proxy — utile pour renouveler un certificat sans interruption de service.
+
+tls:
+  certificates:
+    - certFile: /etc/traefik/certs/serveur.crt
+      keyFile: /etc/traefik/certs/serveur.key
+
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /etc/traefik/certs/serveur.crt
+        keyFile: /etc/traefik/certs/serveur.key
+
+  options:
+    default:
+      # TLS 1.0 et 1.1 sont obsolètes et vulnérables : on impose 1.2 minimum.
+      minVersion: VersionTLS12
+      # Suites de chiffrement retenues : celles qui offrent la « confidentialité
+      # persistante » (ECDHE). Sans elle, quiconque enregistre le trafic
+      # aujourd'hui pourrait le déchiffrer demain s'il obtient la clé privée.
+      cipherSuites:
+        - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+        - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
+      sniStrict: false

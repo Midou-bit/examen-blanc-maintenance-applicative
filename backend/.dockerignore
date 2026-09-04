@@ -1,0 +1,17 @@
+# Tout ce qui n'a rien à faire dans l'image.
+# Sans ce fichier, `COPY . .` embarquerait node_modules (des centaines de Mo,
+# compilés pour la machine du développeur et non pour Alpine Linux) — et
+# surtout le fichier .env avec ses secrets.
+node_modules
+npm-debug.log
+logs
+coverage
+docs-generated
+tests
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+Dockerfile
+.dockerignore

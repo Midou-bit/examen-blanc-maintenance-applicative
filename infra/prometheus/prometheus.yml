@@ -1,0 +1,40 @@
+# Configuration de Prometheus (consigne E26)
+
+global:
+  # Fréquence de relevé. 15 s est un bon compromis : assez fin pour détecter
+  # un incident rapidement, assez espacé pour ne pas surcharger l'application.
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environnement: preproduction
+
+# Où envoyer les alertes qui se déclenchent.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+# Fichiers contenant les règles d'alerte.
+rule_files:
+  - /etc/prometheus/regles-alertes.yml
+
+scrape_configs:
+  # L'API : c'est la cible principale.
+  - job_name: 'api-taches'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['backend:5000']
+        labels:
+          service: backend
+
+  # Le reverse proxy : permet de distinguer « l'API est tombée » de
+  # « le proxy est tombé » — deux incidents très différents.
+  - job_name: 'traefik'
+    static_configs:
+      - targets: ['traefik:8080']
+
+  # Prometheus se surveille lui-même : un superviseur en panne qui ne dit
+  # rien est pire que pas de superviseur du tout.
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
