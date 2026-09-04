@@ -1,0 +1,37 @@
+==============================================================
+ PREUVE FINALE — Pile Docker complète en HTTPS
+ Date : 2026-09-04T15:51:42+02:00
+==============================================================
+
+── Services ─────────────────────────────────────────────
+SERVICE    STATUS                        PORTS
+backend    Up About a minute (healthy)   5000/tcp
+frontend   Up About a minute (healthy)   80/tcp
+mongo      Up About a minute (healthy)   27017/tcp
+traefik    Up About a minute             0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp
+
+── Redirection HTTP -> HTTPS ────────────────────────────
+   http://app.exam.local -> HTTP 301 vers https://app.exam.local/
+
+── Interface et API en HTTPS ────────────────────────────
+   https://app.exam.local      -> HTTP 200
+   https://api.exam.local/health -> {"status":"ok","uptime":78.736096774,"timestamp":"2026-09-04T13:51:43.198Z"}
+   https://api.exam.local/ready  -> {"status":"ready","database":"connectée"}
+
+── Certificat TLS ───────────────────────────────────────
+   subject=C = FR, O = Examen Blanc, CN = app.exam.local
+   issuer=C = FR, O = Examen Blanc, CN = Autorite Locale Examen
+   Verify return code: 0 (ok)
+       Protocol  : TLSv1.3
+       Cipher    : TLS_AES_128_GCM_SHA256
+       Verify return code: 0 (ok)
+
+── MongoDB exposé sur l'hôte ? ──────────────────────────
+   ✓ INJOIGNABLE depuis l'hôte (reseau interne uniquement)
+
+── Parcours fonctionnel complet via HTTPS ───────────────
+   1. Inscription     : {"msg":"Compte créé avec succès.","user":{"id":"6a9accefb121a769006b9f53","username":"demo29903"}} [HTTP 201]
+   2. Cookie HttpOnly : présent dans le jar
+   3. Creation tache  : {"user":"6a9accefb121a769006b9f53","title":"Tache de demonstration","description":"","isCo...
+   4. Injection NoSQL : {"msg":"Les données envoyées sont invalides.","code":"VALIDATION_ERROR","errors":[{"field":"username","message":"\"use
+   5. Mot de passe faible : [HTTP 400 = refuse]
