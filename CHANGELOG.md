@@ -95,6 +95,57 @@ existant — d'où le passage en version majeure.
 - **Affectation de masse** : le champ `user` envoyé par le client est ignoré ;
   le propriétaire vient exclusivement de la session.
 
+### Frontend
+
+- **`B1` — La tâche créée n'apparaissait pas.** `addTask` était une fonction
+  vide ; il fallait recharger la page. La liste se met désormais à jour
+  immédiatement.
+- **`B3` — Les erreurs étaient invisibles.** Un mauvais mot de passe ne
+  produisait qu'un `console.error` : l'utilisateur cliquait, et rien ne se
+  passait. Ajout d'un composant `Message` et d'un hook `useMessage`, alimentés
+  par les réponses JSON du backend.
+  *Écart assumé avec la consigne (slide 30)* : `connect-flash` est conçu pour
+  des pages rendues par le serveur et n'a pas de sens dans une SPA React.
+  L'équivalent adapté à l'architecture a été implémenté — justification
+  détaillée dans `src/hooks/useMessage.js` et `docs/E27-bugs.md`.
+- **`B5`** — `fetchTasks` n'avait pas de `try/catch` : API injoignable =
+  page blanche sans explication.
+- **`B6`** — Aucune route protégée : la page Tâches se montait puis
+  redirigeait, laissant apparaître un éclair de contenu privé. Ajout d'un
+  composant `ProtectedRoute` qui vérifie AVANT le montage.
+- **`B7` — Fonctionnalité manquante.** La route `PUT /api/tasks/:id` existait
+  côté serveur, mais aucune interface ne l'appelait : impossible de cocher ou
+  de renommer une tâche. Ajout d'une case à cocher et de l'édition par
+  double-clic, avec mise à jour optimiste et retour arrière en cas d'échec.
+- **`B8`** — `<header>` imbriqué dans `<header>` (HTML invalide), règles CSS
+  `header` dupliquées et contradictoires, `width: 100vw` provoquant un
+  débordement horizontal, lien « Mes Tâches » affiché hors connexion, et
+  aucun lien vers la page d'inscription.
+- **`B10`** — URL d'API en dur, remplacée par une variable d'environnement.
+- **État de session** : ne repose plus sur `localStorage` (impossible avec un
+  cookie HttpOnly, et de toute façon peu fiable) mais sur
+  `GET /api/auth/me`. L'interface reflète enfin l'état réel de la session.
+- Ajout des états « chargement », « liste vide » et d'un compteur de tâches
+  restantes ; libellés d'accessibilité et gestion du clavier (Entrée, Échap).
+
+### Migration de l'outillage frontend
+
+- **Create React App → Vite.** CRA a été officiellement abandonné par
+  l'équipe React en février 2025 ; son outillage portait 56 vulnérabilités
+  connues, dont 2 critiques, qu'aucune mise à jour ne pouvait corriger.
+  Conserver cet outil aurait contredit la consigne « mettre à jour les
+  bibliothèques dans l'ensemble du projet ».
+  **Points de rupture traités** : `index.html` déplacé à la racine et devenu
+  point d'entrée, fichiers contenant du JSX renommés en `.jsx`, variables
+  d'environnement `REACT_APP_*` → `VITE_*` et `process.env` →
+  `import.meta.env`, configuration ESLint reconstituée (elle était fournie
+  par CRA), tests migrés de Jest vers Vitest.
+  **Résultat** : 1239 paquets retirés, compilation de production en ~1,6 s,
+  `npm audit` frontend **61 → 0**.
+- **React Router 6 → 7**, **axios 1.3 → 1.20**.
+- **17 tests frontend** (Vitest + Testing Library) couvrant l'affichage des
+  erreurs, le cochage et le renommage des tâches, et l'accessibilité.
+
 ### Dépendances (E28 — « mettre à jour les bibliothèques »)
 
 - **Express 4.18 → 5.2.1.** Corrige quatre vulnérabilités transitives
@@ -113,8 +164,8 @@ existant — d'où le passage en version majeure.
   paquet qui lui succède (`@prometheus-io/client`) exige Node ≥ 22, or la
   cible d'exécution est Node 20. Décision documentée dans
   `docs/E28-securite.md`.
-- **Résultat `npm audit` (backend)** : **7 vulnérabilités (5 hautes,
-  2 modérées) → 0**.
+- **Résultat `npm audit`** : backend **7 vulnérabilités (5 hautes) → 0**,
+  frontend **61 vulnérabilités (2 critiques, 34 hautes) → 0**.
 
 ### Ajouté
 

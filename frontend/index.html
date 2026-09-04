@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Application de gestion de tâches personnelles" />
+    <title>Mes Tâches</title>
+  </head>
+  <body>
+    <noscript>Cette application nécessite JavaScript pour fonctionner.</noscript>
+    <div id="root"></div>
+    <!--
+      Différence essentielle avec Create React App : ce fichier est le POINT
+      D'ENTRÉE de Vite, pas un gabarit dans lequel on injecte des scripts.
+      C'est ici qu'on référence explicitement le module racine, et Vite
+      remonte toute la chaîne d'imports à partir de là.
+    -->
+    <script type="module" src="/src/index.jsx"></script>
+  </body>
+</html>

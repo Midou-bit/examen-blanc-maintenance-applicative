@@ -1,25 +1,152 @@
+/*
+ * Feuille de style principale.
+ *
+ * Problèmes corrigés par rapport à la version d'origine :
+ *  • la règle `header` était définie DEUX fois avec des valeurs
+ *    contradictoires (fond #333 puis #222, statique puis fixe) ;
+ *  • `width: 100vw` provoquait un débordement horizontal dès qu'une barre
+ *    de défilement verticale apparaissait — 100vw inclut cette barre,
+ *    contrairement à 100% ;
+ *  • `main` était centré verticalement, ce qui coupait le contenu dès que
+ *    la liste dépassait la hauteur de l'écran ;
+ *  • le style du pied de page était écrit en JavaScript.
+ */
+
+:root {
+  --couleur-principale: #4b6cb7;
+  --couleur-principale-sombre: #3a5599;
+  --couleur-danger: #dc3545;
+  --couleur-texte: #2c3e50;
+  --couleur-texte-doux: #6b7785;
+  --couleur-fond: #f4f7f6;
+  --couleur-bordure: #e1e5ea;
+  --rayon: 8px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  background-color: #f4f7f6;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--couleur-fond);
+  color: var(--couleur-texte);
   margin: 0;
-  padding: 20px;
+  padding: 0;
+  line-height: 1.5;
+}
+
+.App {
+  min-height: 100vh;
   display: flex;
+  flex-direction: column;
+}
+
+/* ─── En-tête ─────────────────────────────────────────────────────────── */
+
+.entete {
+  background: var(--couleur-principale);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.nav {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.nav__marque {
+  color: #fff;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.nav__liste {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 0;
+  padding: 0;
+}
+
+.nav__lien,
+.nav__bouton {
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 15px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 6px 10px;
+  border-radius: 4px;
+}
+
+.nav__lien:hover,
+.nav__bouton:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.nav__utilisateur {
+  opacity: 0.85;
+  font-size: 14px;
+}
+
+/* ─── Contenu ─────────────────────────────────────────────────────────── */
+
+.contenu-principal {
+  flex: 1;
+  padding: 32px 20px;
+  display: flex;
+  /* `flex-start` et non `center` : un centrage vertical rognait le haut de
+     la liste dès qu'elle dépassait la hauteur de la fenêtre. */
+  align-items: flex-start;
   justify-content: center;
 }
 
 .container {
-  background: white;
-  padding: 40px;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background: #fff;
+  padding: 32px;
+  border-radius: var(--rayon);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
   width: 100%;
-  max-width: 500px;
+  max-width: 560px;
 }
 
 h1 {
   text-align: center;
-  color: #333;
+  margin-top: 0;
+  color: var(--couleur-texte);
+  font-size: 26px;
 }
+
+.bienvenue,
+.compteur,
+.etat-vide,
+.etat-chargement {
+  text-align: center;
+  color: var(--couleur-texte-doux);
+  font-size: 14px;
+}
+
+.etat-vide {
+  padding: 28px 12px;
+  border: 1px dashed var(--couleur-bordure);
+  border-radius: var(--rayon);
+  margin-top: 20px;
+}
+
+/* ─── Formulaires ─────────────────────────────────────────────────────── */
 
 .form-group {
   margin-bottom: 20px;
@@ -32,12 +159,45 @@ h1 {
   color: #555;
 }
 
-.form-group input {
+.form-group input,
+.task-form input,
+.task-item__edition {
   width: 100%;
-  padding: 10px;
-  border: 1px solid #ccc;
+  padding: 10px 12px;
+  border: 1px solid #ccd2d9;
   border-radius: 4px;
-  box-sizing: border-box;
+  font-size: 15px;
+  font-family: inherit;
+}
+
+.form-group input:focus,
+.task-form input:focus {
+  outline: 2px solid var(--couleur-principale);
+  outline-offset: 1px;
+  border-color: var(--couleur-principale);
+}
+
+.aide {
+  display: block;
+  margin-top: 6px;
+  color: var(--couleur-texte-doux);
+  font-size: 12px;
+}
+
+.regles-mdp {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--couleur-texte-doux);
+}
+
+.regle {
+  padding: 2px 0;
+}
+
+.regle--ok {
+  color: #1b5e20;
 }
 
 .btn {
@@ -45,107 +205,129 @@ h1 {
   padding: 12px;
   border: none;
   border-radius: 4px;
-  background-color: #007bff;
-  color: white;
+  background-color: var(--couleur-principale);
+  color: #fff;
   font-size: 16px;
+  font-family: inherit;
   cursor: pointer;
   transition: background-color 0.2s;
 }
 
-.btn:hover {
-  background-color: #0056b3;
+.btn:hover:not(:disabled) {
+  background-color: var(--couleur-principale-sombre);
+}
+
+/* Un bouton désactivé doit SE VOIR désactivé : sans cet état visuel,
+   l'utilisateur clique dans le vide sans comprendre pourquoi. */
+.btn:disabled {
+  background-color: #a9b6cc;
+  cursor: not-allowed;
+}
+
+.lien-secondaire {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 14px;
+  color: var(--couleur-texte-doux);
+}
+
+/* ─── Liste des tâches ────────────────────────────────────────────────── */
+
+.task-form {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.task-form .btn {
+  width: auto;
+  padding: 10px 20px;
+  white-space: nowrap;
 }
 
 .task-list {
   list-style: none;
   padding: 0;
+  margin: 0;
 }
 
 .task-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 15px;
-  border-bottom: 1px solid #eee;
+  gap: 12px;
+  padding: 12px 4px;
+  border-bottom: 1px solid #eef1f4;
 }
 
 .task-item:last-child {
   border-bottom: none;
 }
 
-.task-item.completed span {
-  text-decoration: line-through;
-  color: #aaa;
+.task-item__titre {
+  flex: 1;
+  cursor: text;
+  word-break: break-word;
 }
 
-.task-item button {
+.task-item.completed .task-item__titre {
+  text-decoration: line-through;
+  color: #a3adb8;
+}
+
+.task-item__supprimer {
   border: none;
-  background: #dc3545;
-  color: white;
-  padding: 5px 10px;
+  background: var(--couleur-danger);
+  color: #fff;
+  padding: 6px 12px;
   border-radius: 4px;
   cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  flex-shrink: 0;
 }
 
-header {
-  background: #333;
-  color: white;
-  padding: 1rem 0;
+.task-item__supprimer:hover {
+  background: #b02a37;
+}
+
+/* ─── Pied de page ────────────────────────────────────────────────────── */
+
+.pied-de-page {
+  background: #2c3e50;
+  color: #fff;
   text-align: center;
+  padding: 16px;
+  font-size: 13px;
 }
 
-header nav ul {
-  list-style: none;
-  padding: 0;
+.pied-de-page p {
   margin: 0;
-  display: flex;
-  justify-content: center;
 }
 
-header nav ul li {
-  margin: 0 15px;
+/* ─── Accessibilité ───────────────────────────────────────────────────── */
+
+/* Masque visuellement un libellé tout en le laissant lisible par les
+   lecteurs d'écran. `display: none` le supprimerait aussi pour eux. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-header nav ul li a {
-  color: white;
-  text-decoration: none;
-  font-weight: bold;
-}
-
-footer {
-  width: 100vw;
-  background: #222;
-  color: #fff;
-  text-align: center;
-  padding: 16px 0;
-  position: relative;
-  bottom: 0;
-}
-
-.App {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
-header {
-  width: 100vw;
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 1;
-  height: 60px; /* Ajustez selon la taille du Header */
-  background: #222;
-  color: #fff;
-}
-
-main {
-  flex: 1;
-  margin-top: 60px; /* Même valeur que header height */
-  padding: 20px;
-  background: #f5f5f5;
-  min-width: 0;
-  display: flex;
-  justify-content: center; /* centre horizontalement */
-  align-items: center;     /* centre verticalement */
+@media (max-width: 600px) {
+  .container {
+    padding: 22px 18px;
+  }
+  .task-form {
+    flex-direction: column;
+  }
+  .task-form .btn {
+    width: 100%;
+  }
 }
