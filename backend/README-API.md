@@ -5,10 +5,10 @@ partir des commentaires du code source** (consigne E29).
 
 ## Deux documentations, deux usages
 
-| Document | Contenu | Public visé |
-|---|---|---|
-| **JSDoc** (cette page) | Modules, fonctions, paramètres, types | Développeur qui reprend le code |
-| **OpenAPI** (`/api-docs`) | Routes HTTP, corps de requête, codes de réponse | Intégrateur qui consomme l'API |
+| Document                  | Contenu                                         | Public visé                     |
+| ------------------------- | ----------------------------------------------- | ------------------------------- |
+| **JSDoc** (cette page)    | Modules, fonctions, paramètres, types           | Développeur qui reprend le code |
+| **OpenAPI** (`/api-docs`) | Routes HTTP, corps de requête, codes de réponse | Intégrateur qui consomme l'API  |
 
 ## Régénérer
 
